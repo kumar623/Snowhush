@@ -7,6 +7,8 @@
 "autumn" = "Herbstlaub";
 "rain" = "Regen";
 "blossom" = "Kirschblüte";
+"starfall" = "Sternenfall";
+"fireflies" = "Glühwürmchen";
 "halloween" = "Halloween";
 "settings" = "Einstellungen";
 "behavior" = "Verhalten";
@@ -35,6 +37,7 @@
 
 "clear.snow" = "Schnee entfernen";
 "plow.snow" = "Schnee pflügen 🚜";
+"plow.auto" = "Von selbst pflügen";
 "clear.autumn" = "Laub entfernen";
 "clear.blossom" = "Blüten entfernen";
 "clear.snow.autumn" = "Schnee und Laub entfernen";

@@ -7,6 +7,8 @@
 "autumn" = "紅葉";
 "rain" = "雨";
 "blossom" = "桜";
+"starfall" = "流れ星";
+"fireflies" = "ホタル";
 "halloween" = "ハロウィン";
 "settings" = "設定";
 "behavior" = "動作";
@@ -35,6 +37,7 @@
 
 "clear.snow" = "雪を消す";
 "plow.snow" = "雪かきする 🚜";
+"plow.auto" = "自動で雪かき";
 "clear.autumn" = "葉を消す";
 "clear.blossom" = "花びらを消す";
 "clear.snow.autumn" = "雪と葉を消す";

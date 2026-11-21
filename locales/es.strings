@@ -7,6 +7,8 @@
 "autumn" = "Hojas de otoño";
 "rain" = "Lluvia";
 "blossom" = "Flor de cerezo";
+"starfall" = "Lluvia de estrellas";
+"fireflies" = "Luciérnagas";
 "halloween" = "Halloween";
 "settings" = "Ajustes";
 "behavior" = "Comportamiento";
@@ -35,6 +37,7 @@
 
 "clear.snow" = "Quitar la nieve";
 "plow.snow" = "Quitar la nieve con la quitanieves 🚜";
+"plow.auto" = "Quitar la nieve sola";
 "clear.autumn" = "Quitar las hojas";
 "clear.blossom" = "Quitar los pétalos";
 "clear.snow.autumn" = "Quitar la nieve y las hojas";

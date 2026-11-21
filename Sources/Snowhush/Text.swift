@@ -11,5 +11,5 @@ func tr(_ prefix: String, _ modes: [Mode]) -> String {
 }
 
 extension Mode {
-    var key: String { ["snow", "autumn", "rain", "blossom"][rawValue] }
+    var key: String { ["snow", "autumn", "rain", "blossom", "starfall", "fireflies"][rawValue] }
 }

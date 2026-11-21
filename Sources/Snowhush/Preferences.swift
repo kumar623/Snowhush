@@ -20,6 +20,7 @@ enum Preferences {
     private static let behindWindowsKey = "behindWindows"
     private static let showOverFullScreenKey = "showOverFullScreen"
     private static let meltSnowKey = "meltSnow"
+    private static let autoPlowKey = "autoPlow"
     /// Before Accumulate picked where snow settles, it turned settling off everywhere at once.
     private static let accumulateKey = "accumulate"
     private static let groundKey = "settleGround"
@@ -53,6 +54,7 @@ enum Preferences {
             behindWindowsKey: false,
             showOverFullScreenKey: false,
             meltSnowKey: true,
+            autoPlowKey: true,
             groundKey: true,
             dockKey: true,
             widgetsKey: true,
@@ -108,6 +110,12 @@ enum Preferences {
     static var meltSnow: Bool {
         get { defaults.bool(forKey: meltSnowKey) }
         set { defaults.set(newValue, forKey: meltSnowKey) }
+    }
+
+    /// The tractor comes out on its own every couple of minutes, as well as from the menu.
+    static var autoPlow: Bool {
+        get { defaults.bool(forKey: autoPlowKey) }
+        set { defaults.set(newValue, forKey: autoPlowKey) }
     }
 
     static var welcomed: Bool {

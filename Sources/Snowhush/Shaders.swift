@@ -51,6 +51,7 @@ struct Sprite {
     float flipSpeed;
     float rain;
     float petal;
+    float glow;
 };
 
 struct SpriteOut {
@@ -87,6 +88,8 @@ struct SpriteOut {
     float petal;
     /// For a drop running down the glass, the share of it from its head back that is its smear over the exposure.
     float blur;
+    /// A light of its own: a star or a firefly, which shines in `tint` and is not dimmed by the night.
+    float glow;
 };
 
 /// What a sprite hands from its vertex to its fragments, packed in fours: Intel and AMD GPUs link at most 32 varyings,
@@ -103,6 +106,7 @@ struct SpriteVaryings {
     float4 d;
     float4 e;
     float4 f;
+    float4 g;
 };
 
 static SpriteVaryings pack(SpriteOut o) {
@@ -118,6 +122,7 @@ static SpriteVaryings pack(SpriteOut o) {
     v.d = float4(o.dab, o.anger, o.leaf, o.turn);
     v.e = float4(o.flip, o.reach, o.turnSmear, o.flipSmear);
     v.f = float4(o.samples, o.rain, o.petal, o.blur);
+    v.g = float4(o.glow, 0.0, 0.0, 0.0);
     return v;
 }
 
@@ -137,6 +142,7 @@ static SpriteOut unpack(SpriteVaryings v) {
     o.dab = v.d.x; o.anger = v.d.y; o.leaf = v.d.z; o.turn = v.d.w;
     o.flip = v.e.x; o.reach = v.e.y; o.turnSmear = v.e.z; o.flipSmear = v.e.w;
     o.samples = v.f.x; o.rain = v.f.y; o.petal = v.f.z; o.blur = v.f.w;
+    o.glow = v.g.x;
     return o;
 }
 
@@ -568,6 +574,7 @@ static SpriteOut sprite(uint vid, const device Sprite *sprites, constant Uniform
         out.flip = s.flip;
         out.ghost = 0.0;
         out.rain = 0.0;
+        out.glow = 0.0;
         return out;
     }
     if (s.rain > 4.5) {
@@ -590,6 +597,7 @@ static SpriteOut sprite(uint vid, const device Sprite *sprites, constant Uniform
         out.rain = s.rain;
         out.size = pixels;
         out.blur = 0.0;
+        out.glow = 0.0;
         return out;
     }
     if (s.rain != 0.0) {
@@ -674,6 +682,7 @@ static SpriteOut sprite(uint vid, const device Sprite *sprites, constant Uniform
     }
     out.leaf = 0.0;
     out.rain = 0.0;
+    out.glow = s.glow;
     return out;
 }
 
@@ -1089,6 +1098,16 @@ fragment float4 spriteFragment(SpriteVaryings v [[stage_in]], float2 coord [[poi
     }
     // Brighter at the head, where the flake is now, than at the tail, where it was.
     float head = span > 0.0 ? 0.15 + 0.85 * pow(t * 0.5 + 0.5, 1.5) : 1.0;
+    if (in.glow > 0.0) {
+        // A hot white core in a halo that falls away around it, as a small light seen at night does.
+        float core = 1.0 - smoothstep(0.0, 0.34, r);
+        float halo = exp(-r * r * 2.6);
+        float lit = saturate(core + halo * 0.6) * in.alpha * head;
+        if (lit < 0.002) discard_fragment();
+        // It makes its own light, so the night does not dim it; only its halo takes the colour.
+        float3 shine = mix(in.tint.rgb, float3(1.0), core * 0.8);
+        return float4(shine * lit, lit);
+    }
     float a = (1.0 - smoothstep(mix(0.6, 0.0, in.soft), 1.0, r)) * in.alpha * head;
     if (a < 0.002) discard_fragment();
     float3 core = float3(0.965, 0.975, 0.995);

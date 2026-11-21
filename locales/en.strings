@@ -10,6 +10,9 @@
 "autumn" = "Autumn Leaves";
 "rain" = "Rain";
 "blossom" = "Cherry Blossom";
+/* Starfall and Fireflies: lights that fall or drift, and leave nothing behind. */
+"starfall" = "Starfall";
+"fireflies" = "Fireflies";
 "halloween" = "Halloween";
 "settings" = "Settings";
 "behavior" = "Behavior";
@@ -41,6 +44,8 @@
 "clear.snow" = "Clear Snow";
 /* Plow Snow: the tractor drives along the bottom and clears the drift there. */
 "plow.snow" = "Plow Snow 🚜";
+/* The tractor comes out on its own every couple of minutes. */
+"plow.auto" = "Plow by Itself";
 "clear.autumn" = "Clear Leaves";
 "clear.blossom" = "Clear Petals";
 "clear.snow.autumn" = "Clear Snow and Leaves";

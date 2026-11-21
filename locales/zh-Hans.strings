@@ -7,6 +7,8 @@
 "autumn" = "秋叶";
 "rain" = "雨";
 "blossom" = "樱花";
+"starfall" = "流星";
+"fireflies" = "萤火虫";
 "halloween" = "万圣节";
 "settings" = "设置";
 "behavior" = "行为";
@@ -35,6 +37,7 @@
 
 "clear.snow" = "清除积雪";
 "plow.snow" = "铲雪 🚜";
+"plow.auto" = "自动铲雪";
 "clear.autumn" = "清除落叶";
 "clear.blossom" = "清除花瓣";
 "clear.snow.autumn" = "清除积雪和落叶";

@@ -4,10 +4,15 @@ import simd
 
 /// What falls: snow, autumn leaves, rain or cherry blossom petals.
 enum Mode: Int, CaseIterable {
-    case snow, autumn, rain, blossom
+    case snow, autumn, rain, blossom, starfall, fireflies
 
     /// Falls as leaves and heaps up as they do: autumn's, or cherry blossom petals.
     var leafy: Bool { self == .autumn || self == .blossom }
+    /// Gathers on the ground and on windows. Rain runs away, and starfall and fireflies are lights, not weather:
+    /// they leave nothing behind, so there is nothing to melt, to sweep aside or to clear.
+    var heaps: Bool { self == .snow || leafy }
+    /// Carries a light of its own, which the night does not dim.
+    var glows: Bool { self == .starfall || self == .fireflies }
     /// What it heaps up as.
     var blend: Blend { self == .autumn ? .autumn : self == .blossom ? .blossom : .snow }
 }
@@ -59,6 +64,8 @@ struct Sprite {
     var rain: Float = 0
     /// One for a cherry blossom petal or flower instead of a leaf.
     var petal: Float = 0
+    /// A light of its own instead of lit snow: a bright core in a soft halo of `tint`, which the night does not dim.
+    var glow: Float = 0
 }
 
 /// A Halloween sign a ghost holds up, or lets fall into the snow.
@@ -129,6 +136,8 @@ private struct Flake {
     /// The direction of the gust that caught the flake and carries it off the screen; zero until then.
     var blown: Float = 0
     var leaf: Float = 0
+    /// Sets one star's twinkle or one firefly's wandering apart from the others'; zero for snow.
+    var seed: Float = 0
     var kind = Mode.snow
     var rain: Bool { kind == .rain }
     /// A drop come off the glass: how big the water it carries is, to run on down whatever window it lands on; zero
@@ -483,6 +492,10 @@ final class SnowSimulation {
     private let jumpSpeed: Float = 6000
     private let trackTime: Float = 0.06
     private let maxMotes = 1500
+    /// Stars fall sparsely, a scattering of lights rather than a snowfall.
+    private let starShare: Float = 0.2
+    /// Fireflies are fewer still: a handful drifting about, which is all it takes.
+    private let fireflyShare: Float = 0.035
     private let gustSweep: Float = 0.6
     private let gustLength: Float = 2.2
     private let gustWind: Float = 1000
@@ -610,6 +623,15 @@ final class SnowSimulation {
     private var scatteredUntil: Double = -10
     /// A gust clearing the snow: its front sweeps across from the windward side, lifting the drifts behind it.
     private var gust: (start: Double, direction: Float, calm: Bool)?
+    /// The tractor comes out on its own every couple of minutes, as well as when the menu sends it.
+    var plowsItself = false {
+        didSet {
+            guard plowsItself != oldValue else { return }
+            nextPlow = plowsItself ? clock + Double(plowWait()) : 0
+        }
+    }
+    /// When it next comes out of its own accord; zero while it does not.
+    private var nextPlow: Double = 0
     /// The snowplow at work: where its middle is, which way it drives, and how high its wheels ride now.
     private var plow: (x: Float, direction: Float, ride: Float, load: Float, leaves: Float, petals: Float)?
     private var plowMoved = false
@@ -736,6 +758,7 @@ final class SnowSimulation {
         trackCursor(point, dt: dt)
         for ledge in ledgeList where !ledge.carried { confine(ledge) }
         blow(dt: dt)
+        sendPlow()
         drive(dt: dt)
         skim(dt: dt)
         ledgeSpans = ledgeList.map { (x: $0.base.x, count: $0.count) }
@@ -812,16 +835,17 @@ final class SnowSimulation {
         for flake in flakes where count < capacity {
             let petal = flake.kind == .blossom
             let tilt = isFlower(flake.leaf, petal: petal) ? flowerTilt(seed: flake.leaf, phase: flake.phase) : nil
+            let lit = flake.kind.glows ? light(of: flake) : nil
             buffer[count] = Sprite(
                 position: flake.position,
                 velocity: flake.leaf != 0 ? motion(of: flake) : flake.velocity,
                 size: flake.leaf != 0 ? drawnSize(flake.size, seed: flake.leaf, petal: petal) : flake.size,
-                alpha: flake.alpha * fallingOpacity,
+                alpha: (lit?.alpha ?? flake.alpha) * fallingOpacity,
                 soft: flake.soft,
-                tintAmount: flake.tintAmount,
-                tintRed: flake.tint.x,
-                tintGreen: flake.tint.y,
-                tintBlue: flake.tint.z,
+                tintAmount: lit != nil ? 1 : flake.tintAmount,
+                tintRed: lit?.colour.x ?? flake.tint.x,
+                tintGreen: lit?.colour.y ?? flake.tint.y,
+                tintBlue: lit?.colour.z ?? flake.tint.z,
                 armAngle: tilt?.direction ?? 0,
                 leaf: flake.leaf,
                 turn: turn(of: flake),
@@ -829,7 +853,8 @@ final class SnowSimulation {
                 turnSpeed: flake.leaf != 0 ? cos(flake.phase) * 0.6 * flake.swayRate + spinRate(flake.leaf, petal: petal) : 0,
                 flipSpeed: flake.leaf != 0 && tilt == nil ? tumbleSpeed(flake.leaf) : 0,
                 rain: flake.rain ? 1 : 0,
-                petal: petal ? 1 : 0
+                petal: petal ? 1 : 0,
+                glow: lit != nil ? 1 : 0
             )
             count += 1
         }
@@ -1909,6 +1934,12 @@ final class SnowSimulation {
             if flake.blown != 0 {
                 // The nearer the flake, the faster the gust seems to carry it.
                 flake.velocity.x += (flake.blown * gustWind * (1.3 + 1.3 * flake.depth) - flake.velocity.x) * min(1, dt * 2.5)
+            } else if flake.kind == .fireflies {
+                // A firefly goes its own way: it does not fall, and nothing below it catches it.
+                advanceFirefly(&flake, dt: dt, wind: wind, wake: wake)
+                flakes[i] = flake
+                i -= 1
+                continue
             } else {
                 // Rain falls slanted, as wind drives it; snow and leaves only drift.
                 flake.velocity.x += (wind * (flake.rain ? 3 : 1) * (0.35 + 0.65 * flake.depth) - flake.velocity.x) * follow
@@ -2607,6 +2638,8 @@ final class SnowSimulation {
     private func makeFlake(kind: Mode, y: Float) -> Flake {
         if kind.leafy { return makeLeaf(y: y, petal: kind == .blossom) }
         if kind == .rain { return makeRaindrop(y: y) }
+        if kind == .starfall { return makeStar(y: y) }
+        if kind == .fireflies { return makeFirefly() }
         let near = random.next() < 0.02
         let depth = near ? 1 : pow(random.next(), 1.6)
         let fallSpeed = near ? random.range(75, 100) : 16 + depth * 50 + random.range(0, 10)
@@ -2643,6 +2676,95 @@ final class SnowSimulation {
             leaf: random.range(0.001, 1),
             kind: petal ? .blossom : .autumn
         )
+    }
+
+    /// A falling star: a small light that drifts down twinkling, and fades out before it reaches the ground. It
+    /// settles nowhere, so nothing is left to clear away.
+    private func makeStar(y: Float) -> Flake {
+        let depth = pow(random.next(), 1.4)
+        let fallSpeed = 16 + depth * 44 + random.range(0, 10)
+        return Flake(
+            position: SIMD2(random.range(-30, width + 30), y),
+            velocity: SIMD2(windSpeed() * (0.3 + 0.7 * depth), -fallSpeed),
+            fallSpeed: fallSpeed,
+            size: 1.5 + depth * 3.4 + random.range(0, 0.8),
+            depth: depth,
+            alpha: 0.4 + depth * 0.55,
+            soft: 0.45,
+            phase: random.range(0, phaseWrap),
+            // The twinkle's rate; a star sways as little as the finest snow.
+            swayRate: random.range(1.6, 4.2),
+            swayAmount: random.range(2, 6) + depth * 7,
+            settles: false,
+            seed: random.range(0, 1),
+            kind: .starfall
+        )
+    }
+
+    /// A firefly, which does not fall at all: it wanders about low over the screen, glowing on and off. The lower
+    /// half is where they keep, as they do over grass.
+    private func makeFirefly() -> Flake {
+        let depth = pow(random.next(), 1.1)
+        return Flake(
+            position: SIMD2(random.range(0, width), random.range(20, height * 0.62)),
+            velocity: SIMD2(random.range(-20, 20), random.range(-10, 10)),
+            fallSpeed: 0,
+            size: 2.2 + depth * 2.6,
+            depth: depth,
+            alpha: 0.55 + depth * 0.45,
+            soft: 0.5,
+            phase: random.range(0, phaseWrap),
+            // How fast it glows on and off, and how briskly it wanders.
+            swayRate: random.range(0.7, 1.5),
+            swayAmount: random.range(18, 44),
+            settles: false,
+            seed: random.range(0, 1),
+            kind: .fireflies
+        )
+    }
+
+    /// Carries a firefly on a step: it wanders where it will, keeps off the edges and keeps low, and the breeze only
+    /// nudges it. It never lands, so it is never recycled at the bottom as what falls is.
+    private func advanceFirefly(_ flake: inout Flake, dt: Float, wind: Float,
+                                wake: (center: SIMD2<Float>, velocity: SIMD2<Float>)?) {
+        flake.phase += flake.swayRate * dt
+        if flake.phase > phaseWrap { flake.phase -= phaseWrap }
+        // Two slow turns of its own, so no two wander alike and none goes in a straight line.
+        let wander = SIMD2(
+            cos(flake.phase * 0.8 + flake.seed * 17) + 0.4 * cos(flake.phase * 2.1 + flake.seed * 31),
+            sin(flake.phase * 1.17 + flake.seed * 23) * 0.7
+        )
+        var want = wander * flake.swayAmount + SIMD2(wind * 0.25, 0)
+        // It turns back from the edges, and keeps to the lower part of the screen where the grass would be.
+        let edge: Float = 60
+        if flake.position.x < edge { want.x += (edge - flake.position.x) * 1.2 }
+        if flake.position.x > width - edge { want.x -= (flake.position.x - (width - edge)) * 1.2 }
+        let ceiling = height * 0.7
+        if flake.position.y > ceiling { want.y -= (flake.position.y - ceiling) * 1.1 }
+        if flake.position.y < 24 { want.y += (24 - flake.position.y) * 1.4 }
+        flake.velocity += (want - flake.velocity) * min(1, dt * 1.8)
+        if let wake { stir(&flake.velocity, at: flake.position, in: wake, dt: dt) }
+        flake.position += flake.velocity * dt
+    }
+
+    /// How a star or a firefly shines this moment: a star twinkles quickly and keeps shining, while a firefly
+    /// glows on and off, dark for longer than it is lit, as they do. A falling star fades out near the ground
+    /// rather than reaching it.
+    private func light(of flake: Flake) -> (alpha: Float, colour: SIMD3<Float>) {
+        switch flake.kind {
+        case .starfall:
+            let twinkle = 0.45 + 0.55 * pow(0.5 + 0.5 * sin(flake.phase * 2 + flake.seed * 37), 2)
+            // Out before it lands: the last 90 points of its fall take its light.
+            let fade = smoothstep(0, 90, flake.position.y)
+            // Some burn cold and blue-white, some warm and golden.
+            let warm = flake.seed
+            let colour = SIMD3<Float>(0.80, 0.88, 1.0) + (SIMD3<Float>(1.0, 0.92, 0.72) - SIMD3<Float>(0.80, 0.88, 1.0)) * warm
+            return (flake.alpha * twinkle * fade, colour)
+        default:
+            let beat = pow(max(0, sin(flake.phase * 0.9 + flake.seed * 29)), 2.4)
+            // Never quite out, so one is still there to see between its flashes.
+            return (flake.alpha * (0.08 + 0.92 * beat), SIMD3(0.78, 1.0, 0.36))
+        }
     }
 
     /// A raindrop, drawn as the streak it leaves over the exposure: the nearer, the faster, longer and brighter.
@@ -3229,6 +3351,23 @@ final class SnowSimulation {
 
     // MARK: - Plow
 
+    /// How long until the tractor comes out by itself: around two minutes, never quite the same twice, so it is
+    /// not something you can set your watch by.
+    private func plowWait() -> Float { random.range(95, 145) }
+
+    /// Sends the tractor out by itself once its time has come, so long as there is a drift worth clearing and
+    /// nothing else is sweeping the screen. With too little snow it waits, and goes as soon as there is enough.
+    private func sendPlow() {
+        guard plowsItself, accumulates, groundSettles else { return }
+        if nextPlow == 0 {
+            nextPlow = clock + Double(plowWait())
+            return
+        }
+        guard clock >= nextPlow, plow == nil, gust == nil, nextMode == nil, ground.top > 4 else { return }
+        plowSnow(direction: breezeDirection)
+        nextPlow = clock + Double(plowWait())
+    }
+
     /// How fast the tractor drives, in points a second.
     private let plowSpeed: Float = 240
     /// The thin layer the blade leaves behind, as a real plow leaves on the road.
@@ -3778,8 +3917,8 @@ final class SnowSimulation {
     private func settle(dt: Float) {
         // Melting nearly keeps pace with the snowfall, so heavier snowfall builds drifts only a little higher, and the
         // far sparser leaves wither as slowly.
-        let heaping = modes.filter { $0 != .rain }.reduce(Float(0)) { $0 + share(of: $1) } / Float(modes.count)
-        let falling = Self.flakesPerMegapoint(intensity) * density * (modes == [.rain] ? 1 : heaping)
+        let heaping = modes.filter(\.heaps).reduce(Float(0)) { $0 + share(of: $1) } / Float(modes.count)
+        let falling = Self.flakesPerMegapoint(intensity) * density * (modes.contains(where: \.heaps) ? heaping : 1)
         let meltPace = falling > 0 ? pow(falling / thawBalance, thawExponent) : 1
         for ledge in ledgeList { ledge.outside = (outside(of: ledge, left: true), outside(of: ledge, left: false)) }
         for layer in layers {
@@ -3815,7 +3954,13 @@ final class SnowSimulation {
 
     /// How many of a kind are in sight at once, against snow.
     private func share(of mode: Mode) -> Float {
-        mode.leafy ? leafShare : mode == .rain ? rainShare : 1
+        switch mode {
+        case .autumn, .blossom: leafShare
+        case .rain: rainShare
+        case .starfall: starShare
+        case .fireflies: fireflyShare
+        case .snow: 1
+        }
     }
 
     private static func columnCount(for width: Float, columnWidth: Float) -> Int {

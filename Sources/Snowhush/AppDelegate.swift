@@ -25,6 +25,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, SPUSta
     private var meltItem: NSMenuItem!
     private var clearItem: NSMenuItem!
     private var plowItem: NSMenuItem!
+    private var autoPlowItem: NSMenuItem!
     private var halloweenItem: NSMenuItem!
     private var mixedItem: NSMenuItem!
     private var modeItems: [(item: NSMenuItem, mode: Mode)] = []
@@ -101,6 +102,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, SPUSta
                 snow.simulation.snowfallReleased = { [weak self] in self?.releaseSnowfall() }
                 snow.halloween = halloween
                 snow.modes = Preferences.modes
+                snow.simulation.plowsItself = Preferences.autoPlow && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
                 snow.maxFrameRate = Preferences.maxPerformance
                 snow.activityChanged = { [weak self] in self?.updateActivity() }
                 snow.apply(power.budget)
@@ -200,6 +202,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, SPUSta
         settings.autoenablesItems = false
         settings.addItem(.sectionHeader(title: tr("behavior")))
         meltItem = toggle(tr("melt.snow"), #selector(toggleMeltSnow), to: settings)
+        autoPlowItem = toggle(tr("plow.auto"), #selector(toggleAutoPlow), to: settings)
         deepInteractionItem = toggle(tr("deep"), #selector(toggleDeepInteraction), to: settings)
         settings.addItem(.separator())
         settings.addItem(.sectionHeader(title: tr("display")))
@@ -260,10 +263,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, SPUSta
         let modes = Mode.allCases.filter(Preferences.modes.contains)
         mixedItem.state = Preferences.mixed ? .on : .off
         for (item, mode) in modeItems { item.state = modes.contains(mode) ? .on : .off }
-        // Rain neither heaps up nor lies about to clear away.
-        let heaps = modes.filter { $0 != .rain }
+        // Rain neither heaps up nor lies about to clear away, and nor do starfall and fireflies.
+        let heaps = modes.filter(\.heaps)
         meltItem.isHidden = heaps.isEmpty
         clearItem.isHidden = heaps.isEmpty
+        // With nothing lying about there is nothing to plow either.
+        plowItem.isHidden = heaps.isEmpty
+        autoPlowItem.isHidden = heaps.isEmpty
+        autoPlowItem.state = Preferences.autoPlow ? .on : .off
+        autoPlowItem.isEnabled = !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         meltItem.title = tr(heaps.contains(.snow) ? "melt.snow" : heaps == [.blossom] ? "melt.blossom" : "melt.autumn")
         clearItem.title = tr("clear", heaps)
         (meltItem.view as? MenuToggle)?.fit(meltItem.title)
@@ -340,6 +348,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, SPUSta
         }
         let direction = screens.first?.simulation.breezeDirection ?? -1
         for snow in screens { snow.simulation.plowSnow(direction: direction) }
+    }
+
+    @objc private func toggleAutoPlow() {
+        Preferences.autoPlow.toggle()
+        applyAutoPlow()
+    }
+
+    /// Where motion is cut down, the tractor never comes out by itself: it would drive across unasked.
+    private func applyAutoPlow() {
+        let wanted = Preferences.autoPlow && !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
+        for snow in screens { snow.simulation.plowsItself = wanted }
     }
 
     @objc private func toggleBehindWindows() {

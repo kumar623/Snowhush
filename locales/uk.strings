@@ -7,6 +7,8 @@
 "autumn" = "Осіннє листя";
 "rain" = "Дощ";
 "blossom" = "Цвіт сакури";
+"starfall" = "Зорепад";
+"fireflies" = "Світлячки";
 "halloween" = "Гелловін";
 "settings" = "Налаштування";
 "behavior" = "Поведінка";
@@ -35,6 +37,7 @@
 
 "clear.snow" = "Прибрати сніг";
 "plow.snow" = "Розчистити сніг 🚜";
+"plow.auto" = "Розчищати самому";
 "clear.autumn" = "Прибрати листя";
 "clear.blossom" = "Прибрати пелюстки";
 "clear.snow.autumn" = "Прибрати сніг і листя";
