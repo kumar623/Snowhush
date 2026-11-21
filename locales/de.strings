@@ -34,6 +34,7 @@
 "quit" = "Beenden";
 
 "clear.snow" = "Schnee entfernen";
+"plow.snow" = "Schnee pflügen 🚜";
 "clear.autumn" = "Laub entfernen";
 "clear.blossom" = "Blüten entfernen";
 "clear.snow.autumn" = "Schnee und Laub entfernen";

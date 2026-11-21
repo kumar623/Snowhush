@@ -34,6 +34,7 @@
 "quit" = "Вийти";
 
 "clear.snow" = "Прибрати сніг";
+"plow.snow" = "Розчистити сніг 🚜";
 "clear.autumn" = "Прибрати листя";
 "clear.blossom" = "Прибрати пелюстки";
 "clear.snow.autumn" = "Прибрати сніг і листя";

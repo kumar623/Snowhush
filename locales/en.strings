@@ -39,6 +39,8 @@
 
 /* Clear Snow, for what lies about: rain never does. */
 "clear.snow" = "Clear Snow";
+/* Plow Snow: the tractor drives along the bottom and clears the drift there. */
+"plow.snow" = "Plow Snow 🚜";
 "clear.autumn" = "Clear Leaves";
 "clear.blossom" = "Clear Petals";
 "clear.snow.autumn" = "Clear Snow and Leaves";

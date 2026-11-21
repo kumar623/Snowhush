@@ -80,6 +80,18 @@ struct PumpkinSprite {
     var seed: Float
 }
 
+/// The snowplow tractor driving along the screen bottom, clearing the drift there.
+struct TractorSprite {
+    /// The middle of its bottom, between the wheels.
+    var anchor: SIMD2<Float>
+    /// How wide and how tall it is drawn; a negative width turns it around to face left.
+    var size: SIMD2<Float>
+    /// How far it tilts, following the snow under its wheels.
+    var angle: Float
+    /// The bed it drives on: nothing of it shows below, so it sinks into the snow it has not cleared yet.
+    var ground: Float
+}
+
 /// A bit of something that crumbles into snow, such as a window: it keeps its colour for a moment while it falls.
 struct ScatterPiece {
     var position: SIMD2<Float>
@@ -598,6 +610,9 @@ final class SnowSimulation {
     private var scatteredUntil: Double = -10
     /// A gust clearing the snow: its front sweeps across from the windward side, lifting the drifts behind it.
     private var gust: (start: Double, direction: Float, calm: Bool)?
+    /// The snowplow at work: where its middle is, which way it drives, and how high its wheels ride now.
+    private var plow: (x: Float, direction: Float, ride: Float, load: Float, leaves: Float, petals: Float)?
+    private var plowMoved = false
     private var slideWind: Float = 0
     /// What `spareLeaves` found since the step began, less the leaves shown since.
     private var leafBudget: Float?
@@ -682,7 +697,7 @@ final class SnowSimulation {
     /// Nothing falls, lies, waits for its window or haunts, and nothing will until the snow is stirred.
     var isEmpty: Bool {
         intensity <= 0 && !halloween && flakes.isEmpty && grains.isEmpty && motes.isEmpty && ghosts.isEmpty
-            && fallingSigns.isEmpty && snowballs.isEmpty && gust == nil && !dormant.values.contains { $0.ledge.top > 0 } && parking.isEmpty && lying.isEmpty && nextMode == nil
+            && fallingSigns.isEmpty && snowballs.isEmpty && gust == nil && plow == nil && !dormant.values.contains { $0.ledge.top > 0 } && parking.isEmpty && lying.isEmpty && nextMode == nil
             && splashes.isEmpty && glassDrops.isEmpty && !wet
             && !layers.contains { $0.top > 0 }
     }
@@ -721,6 +736,7 @@ final class SnowSimulation {
         trackCursor(point, dt: dt)
         for ledge in ledgeList where !ledge.carried { confine(ledge) }
         blow(dt: dt)
+        drive(dt: dt)
         skim(dt: dt)
         ledgeSpans = ledgeList.map { (x: $0.base.x, count: $0.count) }
         advanceFlakes(dt: dt)
@@ -744,7 +760,7 @@ final class SnowSimulation {
             layer.previousBaseY = layer.base.y
         }
         // Only a cursor that actually displaces snow needs the full rate; one passing near it or resting in it changes nothing.
-        let pushed = clock - lastWindowMotion < 0.6 || clock - lastCursorPush < 0.3 || gust != nil || !snowballs.isEmpty || clock - hitAt < 0.6
+        let pushed = clock - lastWindowMotion < 0.6 || clock - lastCursorPush < 0.3 || gust != nil || plow != nil || !snowballs.isEmpty || clock - hitAt < 0.6
         // The steady trickle off window corners is a few tiny grains at a time; they read fine at the calm rate.
         let flying = grains.count > 24 || clock < scatteredUntil || abs(slideWind) > 20
         if pushed {
@@ -755,11 +771,12 @@ final class SnowSimulation {
             pace = .calm
         }
         let changed = wasMoving || !flakes.isEmpty || !grains.isEmpty || !motes.isEmpty || !ghosts.isEmpty || !fallingSigns.isEmpty || !snowballs.isEmpty
-            || !splashes.isEmpty || !glassDrops.isEmpty || wet || heightsChanged || windowsChanged || pumpkinsMoved || restyled || borrowedChanged
+            || !splashes.isEmpty || !glassDrops.isEmpty || wet || heightsChanged || windowsChanged || pumpkinsMoved || plowMoved || restyled || borrowedChanged
         restyled = false
         windowsChanged = false
         borrowedChanged = false
         pumpkinsMoved = false
+        plowMoved = false
         return changed
     }
 
@@ -3200,11 +3217,149 @@ final class SnowSimulation {
     /// or, `calm`, it melts away where it lies.
     func blowAway(direction: Float, calm: Bool) {
         gust = (clock, direction < 0 ? -1 : 1, calm)
+        // A gust takes the snow the tractor was clearing, so it drives off with it.
+        plow = nil
+        plowMoved = true
         // Snow kept for windows on other Spaces goes too, out of sight.
         dormant.removeAll()
         for entry in parking {
             for i in 0..<entry.ledge.count { entry.ledge.set(i, 0) }
         }
+    }
+
+    // MARK: - Plow
+
+    /// How fast the tractor drives, in points a second.
+    private let plowSpeed: Float = 240
+    /// The thin layer the blade leaves behind, as a real plow leaves on the road.
+    private let plowScrape: Float = 1.5
+
+    /// Whether the tractor is out clearing the snow.
+    var isPlowing: Bool { plow != nil }
+
+    /// Sends the tractor across the screen bottom in `direction`, its blade cutting the drift down to a thin layer
+    /// and throwing what it cuts forward, where it heaps up ahead of the blade until it goes off the edge.
+    func plowSnow(direction: Float) {
+        guard plow == nil else { return }
+        let way: Float = direction < 0 ? -1 : 1
+        let margin = Tractor.width
+        plow = (x: way > 0 ? -margin : width + margin, direction: way, ride: ground.top, load: 0, leaves: 0, petals: 0)
+        plowMoved = true
+        stirred()
+    }
+
+    /// How much snow rides in front of the blade as a wave, in points of area. It is cut again as the blade drives
+    /// into it, so it travels along with the tractor; the rest of what is cut is thrown clear.
+    private let plowWave: Float = 24
+    /// Points of area thrown per grain of powder: the grains carry no snow themselves.
+    private let plowGrain: Float = 12
+
+    /// Drives the tractor on a step. The blade cuts the columns it sweeps over down to a thin layer and takes that
+    /// snow up as its load: a little of it rides ahead as a wave the blade pushes along, and whatever the blade
+    /// cannot hold is thrown clear over the top.
+    private func drive(dt: Float) {
+        guard var plow else { return }
+        let way = plow.direction
+        plow.x += way * plowSpeed * dt
+        let bladeAt = plow.x + way * Tractor.width * Tractor.blade
+        // Everything from behind the blade to in front of it is cut, so nothing is skipped at speed.
+        let swept = plowSpeed * dt + columnWidth
+        let from = ground.clampedIndex(at: min(bladeAt, bladeAt - way * swept))
+        let to = ground.clampedIndex(at: max(bladeAt, bladeAt - way * swept))
+        var highest = plowScrape
+        for i in from...to {
+            let height = ground.heights[i]
+            guard height > plowScrape else { continue }
+            // Of a heap of leaves, the blade pushes the bulk along as it does the snow.
+            let blend = ground.blend(i)
+            let area = (height - plowScrape) * columnWidth
+            ground.set(i, plowScrape)
+            heightsChanged = true
+            highest = max(highest, height)
+            plow.load += area
+            plow.leaves += area * blend.leaves
+            plow.petals += area * blend.petals
+        }
+        let blend = plow.load > 0 ? Blend(leaves: plow.leaves / plow.load, petals: plow.petals / plow.load) : .snow
+        // First the wave in front of the blade, laid in the narrow strip the blade reaches next, so it is cut again
+        // on the next step and rolls along with the tractor instead of being left behind.
+        let wave = min(plow.load, plowWave)
+        if wave > 0.5, ground.index(at: bladeAt + way * columnWidth) != nil {
+            take(wave, of: &plow)
+            let missed = ground.deposit(wave, at: bladeAt + way * columnWidth, wide: false, blend: blend)
+            // What would not fit, at the screen's edge, is thrown with the rest.
+            plow.load += missed
+            plow.leaves += missed * blend.leaves
+            plow.petals += missed * blend.petals
+            heightsChanged = true
+        }
+        // Whatever the wave cannot hold is thrown clear over the top of it, and is gone: the grains thrown carry no
+        // snow of their own, so what the blade took off the ground is neither made nor lost by throwing it.
+        var thrown = plow.load
+        take(thrown, of: &plow)
+        let plume = max(plowScrape + 1, min(highest, 110))
+        while thrown > 0 {
+            spray(at: SIMD2(bladeAt, random.range(plowScrape, plume)), direction: way)
+            thrown -= plowGrain
+        }
+        // The wheels ride over whatever snow is left, and the engine shakes it a little.
+        let rest = (surfaceUnder(plow.x + way * Tractor.width * Tractor.wheels.rear)
+            + surfaceUnder(plow.x + way * Tractor.width * Tractor.wheels.front)) / 2
+        plow.ride += (rest - plow.ride) * min(1, dt * 12)
+        let past = way > 0 ? plow.x - Tractor.width > width : plow.x + Tractor.width < 0
+        self.plow = past ? nil : plow
+        plowMoved = true
+    }
+
+    /// Takes `area` off the blade's load, leaving the shares of leaves and petals in it unchanged.
+    private func take(_ area: Float, of plow: inout (x: Float, direction: Float, ride: Float, load: Float, leaves: Float, petals: Float)) {
+        guard plow.load > 0 else { return }
+        let share = min(area / plow.load, 1)
+        plow.load -= plow.load * share
+        plow.leaves -= plow.leaves * share
+        plow.petals -= plow.petals * share
+    }
+
+    /// A pinch of powder off the blade, thrown forward and up. It carries no snow of its own: the blade's load
+    /// accounts for all of it, so nothing is made or lost by what is thrown.
+    private func spray(at position: SIMD2<Float>, direction: Float) {
+        guard grains.count < maxGrains else { return }
+        grains.append(Grain(
+            position: position + SIMD2(random.range(-2, 2), random.range(-2, 2)),
+            velocity: SIMD2(direction * random.range(1.1, 2.4) * plowSpeed, random.range(120, 420)),
+            area: 0,
+            size: random.range(1.1, 2.8)
+        ))
+        guard random.next() < 0.3, motes.count < maxMotes else { return }
+        motes.append(Mote(
+            position: position,
+            velocity: SIMD2(direction * random.range(200, 500), random.range(40, 160)),
+            size: random.range(7, 15),
+            alpha: random.range(0.05, 0.12),
+            life: random.range(0.5, 1.1)
+        ))
+    }
+
+    /// The snow's surface at `x` along the ground, or the screen bottom past its ends.
+    private func surfaceUnder(_ x: Float) -> Float {
+        guard x >= 0, x <= width else { return 0 }
+        return ground.surface(ground.clampedIndex(at: x))
+    }
+
+    var tractors: [TractorSprite] {
+        guard let plow else { return [] }
+        let way = plow.direction
+        // It tilts with the snow under its wheels, and the engine trembles through it.
+        let slope = surfaceUnder(plow.x + way * Tractor.width * Tractor.wheels.front)
+            - surfaceUnder(plow.x + way * Tractor.width * Tractor.wheels.rear)
+        let span = Tractor.width * (Tractor.wheels.front - Tractor.wheels.rear)
+        let shiver = sin(Float(clock) * 42) * 0.006 + sin(Float(clock) * 71) * 0.004
+        return [TractorSprite(
+            anchor: SIMD2(plow.x, plow.ride + sin(Float(clock) * 55) * 0.5),
+            size: SIMD2(way > 0 ? Tractor.width : -Tractor.width, Tractor.height),
+            angle: way * (atan(slope / span) * 0.6 + shiver),
+            ground: 0
+        )]
     }
 
     /// Clears the screen first and lets the other kinds fall only after, from the top. Another kind only joining what

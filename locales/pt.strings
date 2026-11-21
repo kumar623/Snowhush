@@ -34,6 +34,7 @@
 "quit" = "Sair";
 
 "clear.snow" = "Limpar a neve";
+"plow.snow" = "Limpar a neve com o limpa-neves 🚜";
 "clear.autumn" = "Limpar as folhas";
 "clear.blossom" = "Limpar as pétalas";
 "clear.snow.autumn" = "Limpar a neve e as folhas";

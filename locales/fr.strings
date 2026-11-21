@@ -34,6 +34,7 @@
 "quit" = "Quitter";
 
 "clear.snow" = "Effacer la neige";
+"plow.snow" = "Déneiger au chasse-neige 🚜";
 "clear.autumn" = "Effacer les feuilles";
 "clear.blossom" = "Effacer les pétales";
 "clear.snow.autumn" = "Effacer la neige et les feuilles";

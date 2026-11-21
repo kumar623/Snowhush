@@ -79,6 +79,8 @@ final class Renderer: NSObject, MTKViewDelegate {
     private var field: MTLTexture?
     /// The pumpkin's shell and its face, drawn the first time it is needed.
     private var pumpkinPictures: (shell: MTLTexture, face: MTLTexture)?
+    /// The snowplow tractor, drawn the first time it drives out.
+    private var tractorPicture: MTLTexture?
     /// Each caption's sign, drawn the first time a ghost holds it up, and its size in points.
     private var signPictures: [Int: (texture: MTLTexture, size: SIMD2<Float>)] = [:]
     private let framesInFlight = 3
@@ -325,6 +327,7 @@ final class Renderer: NSObject, MTKViewDelegate {
         drawPumpkins(pumpkins, with: encoder, uniforms: uniforms)
         drawPiles(piles.filter { !$0.isDock }, with: encoder, uniforms: uniforms, heights: heightBuffer)
         drawSigns(simulation.signs, with: encoder, uniforms: uniforms)
+        drawTractors(simulation.tractors, with: encoder, uniforms: uniforms)
         if sprites > 0 {
             encoder.setRenderPipelineState(spritePipeline)
             encoder.setVertexBuffer(spriteBuffer, offset: 0, index: 0)
@@ -446,6 +449,39 @@ final class Renderer: NSObject, MTKViewDelegate {
             encoder.setFragmentTexture(picture.texture, index: 0)
             encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
         }
+    }
+
+    /// The tractor goes down after the snow, so it drives in front of the drift it is clearing.
+    /// It shares the signs' pipeline: an upright picture, turned a little and cut off at the bed it stands on.
+    private func drawTractors(_ tractors: [TractorSprite], with encoder: MTLRenderCommandEncoder, uniforms: Uniforms) {
+        guard !tractors.isEmpty, let picture = tractorPicture ?? makeTractorPicture() else { return }
+        var uniforms = uniforms
+        encoder.setRenderPipelineState(signPipeline)
+        encoder.setFragmentTexture(picture, index: 0)
+        for tractor in tractors {
+            var shape = SignUniforms(anchor: tractor.anchor, size: tractor.size, angle: tractor.angle, ground: tractor.ground)
+            encoder.setVertexBytes(&shape, length: MemoryLayout<SignUniforms>.stride, index: 0)
+            encoder.setVertexBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 1)
+            encoder.setFragmentBytes(&shape, length: MemoryLayout<SignUniforms>.stride, index: 0)
+            encoder.setFragmentBytes(&uniforms, length: MemoryLayout<Uniforms>.stride, index: 1)
+            encoder.drawPrimitives(type: .triangleStrip, vertexStart: 0, vertexCount: 4)
+        }
+    }
+
+    /// Drawn large and mipmapped, like the pumpkins: it is shown at a fraction of that.
+    private func makeTractorPicture() -> MTLTexture? {
+        guard let context = Tractor.draw(scale: 3), let data = context.data else { return nil }
+        let descriptor = MTLTextureDescriptor.texture2DDescriptor(pixelFormat: .bgra8Unorm, width: context.width, height: context.height, mipmapped: true)
+        descriptor.usage = .shaderRead
+        guard let texture = device.makeTexture(descriptor: descriptor) else { return nil }
+        texture.replace(region: MTLRegionMake2D(0, 0, context.width, context.height), mipmapLevel: 0, withBytes: data, bytesPerRow: context.bytesPerRow)
+        guard let commandBuffer = queue.makeCommandBuffer(), let blit = commandBuffer.makeBlitCommandEncoder() else { return nil }
+        blit.generateMipmaps(for: texture)
+        blit.endEncoding()
+        commandBuffer.commit()
+        commandBuffer.waitUntilCompleted()
+        tractorPicture = texture
+        return texture
     }
 
     /// The pumpkins go down before the snow, so the drift they sit in covers their bottoms.

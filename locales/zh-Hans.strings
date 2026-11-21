@@ -34,6 +34,7 @@
 "quit" = "退出";
 
 "clear.snow" = "清除积雪";
+"plow.snow" = "铲雪 🚜";
 "clear.autumn" = "清除落叶";
 "clear.blossom" = "清除花瓣";
 "clear.snow.autumn" = "清除积雪和落叶";

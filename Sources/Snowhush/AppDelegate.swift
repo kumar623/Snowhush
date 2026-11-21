@@ -24,6 +24,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, SPUSta
     private let surfacePicker = SurfacePicker()
     private var meltItem: NSMenuItem!
     private var clearItem: NSMenuItem!
+    private var plowItem: NSMenuItem!
     private var halloweenItem: NSMenuItem!
     private var mixedItem: NSMenuItem!
     private var modeItems: [(item: NSMenuItem, mode: Mode)] = []
@@ -193,6 +194,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, SPUSta
         halloweenItem = add(tr("halloween"), #selector(toggleHalloween), to: modes)
         menu.addItem(withTitle: tr("mode"), action: nil, keyEquivalent: "").submenu = modes
         clearItem = add(tr("clear.snow"), #selector(clearSnow), to: menu)
+        plowItem = add(tr("plow.snow"), #selector(plowSnow), to: menu)
         menu.addItem(.separator())
         let settings = NSMenu()
         settings.autoenablesItems = false
@@ -280,6 +282,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, SPUSta
         deepInteractionItem.state = Preferences.deepInteraction ? .on : .off
         deepInteractionItem.isEnabled = surfaces.contains(.windows)
         clearItem.isEnabled = screens.contains { $0.simulation.hasSnow || $0.simulation.spriteCount > 0 }
+        // Only worth sending out while there is a drift on the ground to cut, and not while it is already out.
+        plowItem.isEnabled = screens.contains { $0.simulation.pileTop > 2 && !$0.simulation.isPlowing }
         halloweenItem.state = Halloween.isWanted ? .on : .off
         halloweenItem.isEnabled = modes == [.snow]
         maxPerformanceItem.state = Preferences.maxPerformance ? .on : .off
@@ -325,6 +329,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate, SPUSta
         let direction = screens.first?.simulation.breezeDirection ?? -1
         let calm = NSWorkspace.shared.accessibilityDisplayShouldReduceMotion
         for snow in screens { snow.simulation.blowAway(direction: direction, calm: calm) }
+    }
+
+    /// Sends the tractor out to plow the drift along the bottom. Where motion is cut down, the snow just melts
+    /// away instead, as Clear Snow does.
+    @objc private func plowSnow() {
+        guard !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            clearSnow()
+            return
+        }
+        let direction = screens.first?.simulation.breezeDirection ?? -1
+        for snow in screens { snow.simulation.plowSnow(direction: direction) }
     }
 
     @objc private func toggleBehindWindows() {

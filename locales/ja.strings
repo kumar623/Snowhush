@@ -34,6 +34,7 @@
 "quit" = "終了";
 
 "clear.snow" = "雪を消す";
+"plow.snow" = "雪かきする 🚜";
 "clear.autumn" = "葉を消す";
 "clear.blossom" = "花びらを消す";
 "clear.snow.autumn" = "雪と葉を消す";
